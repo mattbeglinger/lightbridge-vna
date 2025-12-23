@@ -9,7 +9,7 @@ Lightbridge is a "Build in Public" project to replace legacy, monolithic VNAs wi
 * **Infrastructure:** Terraform & Kubernetes (EKS/AKS)
 * **Security:** Keycloak (OIDC) & TLS 1.3
 
-[Read the full architecture series on Medium]([Your-Medium-Link-Here](https://medium.com/@matt-beglinger/rebuilding-the-medical-imaging-stack-from-scratch-6a907fa8580d))
+[Read the full architecture series on Medium](https://medium.com/@matt-beglinger/rebuilding-the-medical-imaging-stack-from-scratch-6a907fa8580d)
 
 ## 📄 License
 
