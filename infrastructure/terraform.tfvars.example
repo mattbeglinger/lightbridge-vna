@@ -1,0 +1,10 @@
+# AWS Config
+aws_region  = "us-east-1"
+aws_profile = "default"
+
+# Azure Config
+azure_subscription_id = "00000000-0000-0000-0000-000000000000"
+azure_tenant_id       = "11111111-1111-1111-1111-111111111111"
+
+# Global Config
+cluster_name_prefix = "lightbridge"

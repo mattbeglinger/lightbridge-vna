@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ohif-viewer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ohif-viewer
+  template:
+    metadata:
+      labels:
+        app: ohif-viewer
+    spec:
+      containers:
+        - name: ohif
+          image: ohif/viewer:v3.8.0
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            # Inject ConfigMap into Nginx container
+            - name: config-volume
+              mountPath: /usr/share/nginx/html/app-config.js
+              subPath: app-config.js
+      volumes:
+        - name: config-volume
+          configMap:
+            name: ohif-config
