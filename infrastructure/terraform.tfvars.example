@@ -1,10 +1,13 @@
-# AWS Config
-aws_region  = "us-east-1"
+# infrastructure/terraform.tfvars
+
+# AWS Settings (Leave as default if using 'default' profile)
 aws_profile = "default"
+aws_region  = "us-east-1"
 
-# Azure Config
-azure_subscription_id = "00000000-0000-0000-0000-000000000000"
-azure_tenant_id       = "11111111-1111-1111-1111-111111111111"
+# Azure Settings (REQUIRED - Update these!)
+# Run 'az account show' to find these values
+azure_subscription_id = "your-subscription-id-here"
+azure_tenant_id       = "your-tenant-id-here"
 
-# Global Config
-cluster_name_prefix = "lightbridge"
+# Project Settings
+cluster_name_prefix   = "lightbridge"
