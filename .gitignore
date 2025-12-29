@@ -1,0 +1,46 @@
+# =========================
+# Terraform (Infrastructure)
+# =========================
+# Local .terraform directories (plugins & backend config)
+.terraform/
+
+# Terraform State files (Contains sensitive IDs - NEVER commit these)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Terraform Vars (Contains your actual AWS/Azure secrets)
+*.tfvars
+terraform.tfvars
+
+# Crash logs
+crash.log
+override.tf
+override.tf.json
+.terraform.lock.hcl
+
+# =========================
+# Helm / Kubernetes (Software)
+# =========================
+# Ignore the specific config files with your passwords
+values-primary.yaml
+values-secondary.yaml
+
+# Ignore downloaded dependency charts (the .tgz files)
+charts/**/charts/
+*.tgz
+*.lock
+
+# =========================
+# OS & IDE System Files
+# =========================
+# Mac
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# VS Code / JetBrains
+.vscode/
+.idea/
+*.swp
