@@ -1,59 +1,84 @@
-# Lightbridge VNA - Control Plane
-# Usage: 
-#   make infra-aws   (Builds the AWS Datacenter)
-#   make infra-azure (Builds the Azure Datacenter)
-#   make secret      (Creates necessary passwords in the cluster)
-#   make apps        (Installs Orthanc, Postgres, MinIO)
-#   make clean       (Destroys everything)
+# ==============================================================================
+# LIGHTBRIDGE VNA - MASTER MAKEFILE
+# ==============================================================================
 
-.PHONY: help infra-aws infra-azure secret apps clean
+# Variables
+TF_DIR := infrastructure
+CHART_DIR := charts/lightbridge
 
+.PHONY: help init infra-aws infra-azure clean charts apps-aws get-aws-url apps-azure apps
+
+# Default target: Print help
 help:
-	@echo "Lightbridge VNA Control Commands:"
-	@echo "  make infra-aws    - Provision AWS Infrastructure (Terraform)"
-	@echo "  make infra-azure  - Provision Azure Infrastructure (Terraform)"
-	@echo "  make secret       - Create MinIO/DB secrets (Run before 'make apps')"
-	@echo "  make apps         - Deploy Applications to current K8s context"
-	@echo "  make clean        - Destroy all infrastructure"
+	@echo "Lightbridge VNA Management"
+	@echo "--------------------------------"
+	@echo "Infrastructure:"
+	@echo "  make init         - Initialize Terraform"
+	@echo "  make infra-aws    - Deploy AWS Infrastructure (Primary)"
+	@echo "  make infra-azure  - Deploy Azure Infrastructure (Secondary)"
+	@echo "  make clean        - Destroy ALL Infrastructure"
+	@echo ""
+	@echo "Software:"
+	@echo "  make charts       - Download Helm dependencies (MinIO/Postgres)"
+	@echo "  make apps-aws     - Deploy App Stack to AWS (Primary)"
+	@echo "  make get-aws-url  - Get the AWS Load Balancer URL for Replication"
+	@echo "  make apps-azure   - Deploy App Stack to Azure (Secondary)"
+	@echo "  make apps         - Deploy everything (Requires manual config update in middle)"
 
-# Infrastructure Commands
-infra-aws:
-	cd infrastructure && terraform init && terraform apply -target=module.primary_site_aws
+# ==============================================================================
+# Infrastructure (Terraform)
+# ==============================================================================
 
-infra-azure:
-	cd infrastructure && terraform init && terraform apply -target=module.secondary_site_azure
+init:
+	cd $(TF_DIR) && terraform init
 
-# Secret Management (Run this AFTER infra, BEFORE apps)
-secret:
-	@echo "🔐 Creating MinIO Secrets..."
-	-kubectl create namespace lightbridge
-	kubectl create secret generic minio-secrets \
-	  --namespace lightbridge \
-	  --from-literal=accessKey=admin \
-	  --from-literal=secretKey=super-secure-password-CHANGE-ME \
-	  --dry-run=client -o yaml | kubectl apply -f -
+# Deploy only the AWS module (Primary)
+infra-aws: init
+	cd $(TF_DIR) && terraform apply -target=module.primary_site_aws
 
-# Application Deployment
-apps:
-	@echo "🚀 Installing Controllers..."
-	helm repo add cnpg https://cloudnative-pg.io/charts
-	helm repo add jetstack https://charts.jetstack.io
-	helm repo update
-	-helm upgrade --install cnpg cnpg/cloudnative-pg -n cnpg-system --create-namespace
-	-helm upgrade --install cert-manager jetstack/cert-manager -n cert-manager --create-namespace --set installCRDs=true
-	
-	@echo "🏥 Deploying Lightbridge Stack..."
-	-kubectl create namespace lightbridge
-	kubectl apply -f k8s/storage/minio-values.yaml -n lightbridge
-	kubectl apply -f k8s/database/postgres-cluster.yaml -n lightbridge
-	kubectl apply -f k8s/app/orthanc-deployment.yaml -n lightbridge
-	kubectl apply -f k8s/viewer/ohif-config.yaml -n lightbridge
-	kubectl apply -f k8s/viewer/ohif-deployment.yaml -n lightbridge
-	kubectl apply -f k8s/network/ingress.yaml -n lightbridge
-	@echo "✅ Deployment Complete."
+# Deploy only the Azure module (Secondary)
+infra-azure: init
+	cd $(TF_DIR) && terraform apply -target=module.secondary_site_azure
 
-# Safety First
+# Destroy everything (Careful!)
 clean:
-	@echo "⚠️  WARNING: This will destroy the entire VNA."
-	@read -p "Are you sure? [y/N] " ans && [ $${ans:-N} = y ]
-	cd infrastructure && terraform destroy
+	cd $(TF_DIR) && terraform destroy -auto-approve
+
+# ==============================================================================
+# Software Layer (Helm)
+# ==============================================================================
+
+# 1. Download dependencies (MinIO, Postgres) locally into the charts folder
+charts:
+	helm dependency build $(CHART_DIR)
+
+# 2. Deploy to AWS (Primary Site)
+# Switches context to AWS, then installs the Primary configuration
+apps-aws: charts
+	@echo "Switching context to AWS..."
+	aws eks update-kubeconfig --region us-east-1 --name lightbridge-east-cluster
+	@echo "Deploying Primary Stack..."
+	helm upgrade --install lightbridge ./$(CHART_DIR) \
+		-f $(CHART_DIR)/values-primary.yaml \
+		--create-namespace --namespace lightbridge
+
+# 3. Helper: Get the AWS Load Balancer URL
+# Run this AFTER apps-aws to get the address you need for Azure config
+get-aws-url:
+	@echo "Fetching AWS MinIO Load Balancer URL..."
+	@kubectl get svc lightbridge-minio-console -n lightbridge --output jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+	@echo ""
+	@echo "^^ Copy this URL into charts/lightbridge/values-secondary.yaml ^^"
+
+# 4. Deploy to Azure (Secondary Site)
+# Switches context to Azure, then installs the Secondary configuration
+apps-azure: charts
+	@echo "Switching context to Azure..."
+	az aks get-credentials --resource-group lightbridge-rg-west --name lightbridge-west-cluster --overwrite-existing
+	@echo "Deploying Secondary Stack..."
+	helm upgrade --install lightbridge ./$(CHART_DIR) \
+		-f $(CHART_DIR)/values-secondary.yaml \
+		--create-namespace --namespace lightbridge
+
+# Master command (Optional usage)
+apps: apps-aws apps-azure
