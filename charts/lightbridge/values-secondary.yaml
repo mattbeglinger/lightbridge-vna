@@ -1,85 +1,61 @@
 # ==============================================================================
-# LIGHTBRIDGE VNA - SECONDARY SITE CONFIGURATION (AZURE WEST-US-2)
+# LIGHTBRIDGE SECONDARY (AZURE WESTUS2)
 # ==============================================================================
 
 global:
-  siteId: "secondary"
+  storageClass: "default" # Standard Azure Storage Class
 
 # ------------------------------------------------------------------------------
-# Keycloak Configuration (Identity Provider)
+# 1. MINIO (Replication Target)
+# ------------------------------------------------------------------------------
+minio:
+  mode: distributed
+  replicas: 4
+  persistence:
+    size: 10Gi
+  rootUser: "admin"
+  rootPassword: "SuperSecretPassword123!"
+  buckets:
+    - name: orthanc-data
+      policy: public
+      versioning: true
+
+# ------------------------------------------------------------------------------
+# 2. POSTGRES (Replica)
+# Managed by CNPG Operator.
+# ------------------------------------------------------------------------------
+postgresql:
+  enabled: false
+
+# ------------------------------------------------------------------------------
+# 3. KEYCLOAK (Replica)
 # ------------------------------------------------------------------------------
 keycloak:
   auth:
     adminUser: "admin"
     adminPassword: "SuperSecretPassword123!"
-  service:
-    type: LoadBalancer
   
-  # Automate the setup: Import the "Lightbridge" realm on startup
-  extraVolumes:
-    - name: realm-config
-      configMap:
-        name: lightbridge-realm-config
-  extraVolumeMounts:
-    - name: realm-config
-      mountPath: "/realm"
-      readOnly: true
+  externalDatabase:
+    host: "lightbridge-db-ro" # Note: RO (Read Only) service for secondary
+    user: "app"
+    password: "app-password"
+    database: "keycloak"
+
+  # CRITICAL FIX: PROXY CONFIGURATION
   extraEnvVars:
-    - name: KEYCLOAK_IMPORT
-      value: "/realm/lightbridge-realm.json"
+    - name: KC_PROXY
+      value: "edge"
+    - name: KC_HOSTNAME_STRICT
+      value: "false"
+    - name: KC_HTTP_ENABLED
+      value: "true"
 
 # ------------------------------------------------------------------------------
-# MinIO Configuration (Object Storage)
-# ------------------------------------------------------------------------------
-minio:
-  mode: "standalone"
-  replicas: 4
-  
-  rootUser: "admin"
-  rootPassword: "SuperSecretPassword123!"
-
-  # Encrypted Storage (Azure)
-  persistence:
-    enabled: true
-    storageClass: "lightbridge-encrypted-azure"
-    size: 50Gi
-
-  # Connect MinIO to Keycloak for SSO
-  environment:
-    MINIO_IDENTITY_OPENID_CONFIG_URL: "http://lightbridge-keycloak.lightbridge.svc.cluster.local/realms/lightbridge/.well-known/openid-configuration"
-    MINIO_IDENTITY_OPENID_CLIENT_ID: "minio"
-    MINIO_IDENTITY_OPENID_CLIENT_SECRET: "minio-client-secret"
-    MINIO_IDENTITY_OPENID_SCOPES: "openid,profile,email"
-    MINIO_IDENTITY_OPENID_DISPLAY_NAME: "Log in with Lightbridge SSO"
-
-  # ----------------------------------------------------------------------------
-  # Replication Configuration (Active-Passive)
-  # ----------------------------------------------------------------------------
-  replication:
-    enabled: true
-    # Run `make get-aws-url` after deploying Primary to get this value!
-    targetEndpoint: "http://REPLACE_WITH_AWS_LB_URL:9000"
-    targetAccessKey: "admin"
-    targetSecretKey: "SuperSecretPassword123!"
-
-# ------------------------------------------------------------------------------
-# PostgreSQL Configuration (Database)
-# ------------------------------------------------------------------------------
-postgres:
-  fullnameOverride: "lightbridge-db"
-  
-  primary:
-    persistence:
-      enabled: true
-      storageClass: "lightbridge-encrypted-azure"
-      size: 8Gi
-
-# ------------------------------------------------------------------------------
-# Orthanc Configuration (Medical Imaging)
+# 4. LIGHTBRIDGE APP CONFIG
 # ------------------------------------------------------------------------------
 orthanc:
-  storage:
-    endpoint: "minio"
-    bucket: "orthanc-data"
-    accessKey: "admin"
-    secretKey: "SuperSecretPassword123!"
+  name: "lightbridge-orthanc"
+  
+# Defines the Primary Site URL for replication
+globalConfig:
+  primaryUrl: "http://REPLACE_WITH_AWS_URL"
