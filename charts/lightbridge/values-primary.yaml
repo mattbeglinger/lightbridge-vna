@@ -1,75 +1,63 @@
 # ==============================================================================
-# LIGHTBRIDGE VNA - PRIMARY SITE CONFIGURATION (AWS US-EAST-1)
+# LIGHTBRIDGE PRIMARY (AWS US-EAST-1)
 # ==============================================================================
 
 global:
-  siteId: "primary"
+  storageClass: "gp2" # Standard AWS Storage Class
 
 # ------------------------------------------------------------------------------
-# Keycloak Configuration (Identity Provider)
+# 1. MINIO (Object Storage)
+# ------------------------------------------------------------------------------
+minio:
+  mode: distributed
+  replicas: 4
+  persistence:
+    size: 10Gi
+  rootUser: "admin"
+  rootPassword: "SuperSecretPassword123!"
+  buckets:
+    - name: orthanc-data
+      policy: public
+      versioning: true
+
+# ------------------------------------------------------------------------------
+# 2. POSTGRES (Database)
+# Managed by CloudNativePG Operator, so we disable the chart's default DB.
+# ------------------------------------------------------------------------------
+postgresql:
+  enabled: false
+
+# ------------------------------------------------------------------------------
+# 3. KEYCLOAK (Identity)
 # ------------------------------------------------------------------------------
 keycloak:
   auth:
     adminUser: "admin"
     adminPassword: "SuperSecretPassword123!"
-  service:
-    type: LoadBalancer
   
-  # Automate the setup: Import the "Lightbridge" realm on startup
-  extraVolumes:
-    - name: realm-config
-      configMap:
-        name: lightbridge-realm-config
-  extraVolumeMounts:
-    - name: realm-config
-      mountPath: "/realm"
-      readOnly: true
+  # Connect to the internal Postgres (managed by CNPG)
+  externalDatabase:
+    host: "lightbridge-db-rw"
+    user: "app"
+    password: "app-password"
+    database: "keycloak"
+
+  # CRITICAL FIX: PROXY CONFIGURATION
+  # This tells Keycloak it is behind an Ingress (ALB) and should trust headers.
   extraEnvVars:
-    - name: KEYCLOAK_IMPORT
-      value: "/realm/lightbridge-realm.json"
+    - name: KC_PROXY
+      value: "edge"
+    - name: KC_HOSTNAME_STRICT
+      value: "false" # Allows dynamic ALB hostnames without crashing
+    - name: KC_HTTP_ENABLED
+      value: "true" # Keycloak listens on HTTP; ALB handles HTTPS termination
 
 # ------------------------------------------------------------------------------
-# MinIO Configuration (Object Storage)
-# ------------------------------------------------------------------------------
-minio:
-  mode: "standalone"
-  replicas: 4
-  
-  rootUser: "admin"
-  rootPassword: "SuperSecretPassword123!"
-
-  # Encrypted Storage (AWS)
-  persistence:
-    enabled: true
-    storageClass: "lightbridge-encrypted-gp3"
-    size: 50Gi
-
-  # Connect MinIO to Keycloak for SSO
-  environment:
-    MINIO_IDENTITY_OPENID_CONFIG_URL: "http://lightbridge-keycloak.lightbridge.svc.cluster.local/realms/lightbridge/.well-known/openid-configuration"
-    MINIO_IDENTITY_OPENID_CLIENT_ID: "minio"
-    MINIO_IDENTITY_OPENID_CLIENT_SECRET: "minio-client-secret"
-    MINIO_IDENTITY_OPENID_SCOPES: "openid,profile,email"
-    MINIO_IDENTITY_OPENID_DISPLAY_NAME: "Log in with Lightbridge SSO"
-
-# ------------------------------------------------------------------------------
-# PostgreSQL Configuration (Database)
-# ------------------------------------------------------------------------------
-postgres:
-  fullnameOverride: "lightbridge-db"
-  
-  primary:
-    persistence:
-      enabled: true
-      storageClass: "lightbridge-encrypted-gp3"
-      size: 8Gi
-
-# ------------------------------------------------------------------------------
-# Orthanc Configuration (Medical Imaging)
+# 4. LIGHTBRIDGE APP CONFIG (Custom Values)
 # ------------------------------------------------------------------------------
 orthanc:
-  storage:
-    endpoint: "minio"
-    bucket: "orthanc-data"
-    accessKey: "admin"
-    secretKey: "SuperSecretPassword123!"
+  name: "lightbridge-orthanc"
+  image: "jodogne/orthanc-plugins:1.12.1"
+  
+camel:
+  image: "apache/camel-k:2.2.0"
