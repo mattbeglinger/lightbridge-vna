@@ -1,0 +1,43 @@
+apiVersion: camel.apache.org/v1
+kind: Integration
+metadata:
+  name: {{ .Release.Name }}-integration
+spec:
+  flows:
+    # --------------------------------------------------------
+    # Route 1: Heartbeat (Proves Camel is running)
+    # --------------------------------------------------------
+    - from:
+        uri: "timer:heartbeat"
+        parameters:
+          period: "60000" # Log every 60 seconds
+        steps:
+          - log: "Lightbridge Integration Engine Running..."
+
+    # --------------------------------------------------------
+    # Route 2: HL7 v2 Listener (Legacy EMRs)
+    # --------------------------------------------------------
+    - from:
+        uri: "platform-http:/hl7"
+        steps:
+          - log: "Received Legacy HL7 Message: ${body}"
+          # In a real system, we would parse this and send to Orthanc
+          - setBody:
+              simple: "ACK"
+          - setHeader:
+              name: "Content-Type"
+              constant: "text/plain"
+
+    # --------------------------------------------------------
+    # Route 3: FHIR R4 Listener (Modern Apps)
+    # --------------------------------------------------------
+    - from:
+        uri: "platform-http:/fhir/r4/Patient"
+        steps:
+          - log: "Received FHIR Patient Update: ${body}"
+          # Send a standard FHIR 200 OK Response
+          - setHeader:
+              name: "Content-Type"
+              constant: "application/fhir+json"
+          - setBody:
+              simple: "{\"resourceType\": \"OperationOutcome\", \"issue\": [{\"severity\": \"information\", \"code\": \"informational\", \"diagnostics\": \"Patient processed successfully\"}]}"

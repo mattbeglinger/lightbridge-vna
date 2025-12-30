@@ -1,0 +1,85 @@
+# ==============================================================================
+# LIGHTBRIDGE VNA - SECONDARY SITE CONFIGURATION (AZURE WEST-US-2)
+# ==============================================================================
+
+global:
+  siteId: "secondary"
+
+# ------------------------------------------------------------------------------
+# Keycloak Configuration (Identity Provider)
+# ------------------------------------------------------------------------------
+keycloak:
+  auth:
+    adminUser: "admin"
+    adminPassword: "SuperSecretPassword123!"
+  service:
+    type: LoadBalancer
+  
+  # Automate the setup: Import the "Lightbridge" realm on startup
+  extraVolumes:
+    - name: realm-config
+      configMap:
+        name: lightbridge-realm-config
+  extraVolumeMounts:
+    - name: realm-config
+      mountPath: "/realm"
+      readOnly: true
+  extraEnvVars:
+    - name: KEYCLOAK_IMPORT
+      value: "/realm/lightbridge-realm.json"
+
+# ------------------------------------------------------------------------------
+# MinIO Configuration (Object Storage)
+# ------------------------------------------------------------------------------
+minio:
+  mode: "standalone"
+  replicas: 4
+  
+  rootUser: "admin"
+  rootPassword: "SuperSecretPassword123!"
+
+  # Encrypted Storage (Azure)
+  persistence:
+    enabled: true
+    storageClass: "lightbridge-encrypted-azure"
+    size: 50Gi
+
+  # Connect MinIO to Keycloak for SSO
+  environment:
+    MINIO_IDENTITY_OPENID_CONFIG_URL: "http://lightbridge-keycloak.lightbridge.svc.cluster.local/realms/lightbridge/.well-known/openid-configuration"
+    MINIO_IDENTITY_OPENID_CLIENT_ID: "minio"
+    MINIO_IDENTITY_OPENID_CLIENT_SECRET: "minio-client-secret"
+    MINIO_IDENTITY_OPENID_SCOPES: "openid,profile,email"
+    MINIO_IDENTITY_OPENID_DISPLAY_NAME: "Log in with Lightbridge SSO"
+
+  # ----------------------------------------------------------------------------
+  # Replication Configuration (Active-Passive)
+  # ----------------------------------------------------------------------------
+  replication:
+    enabled: true
+    # Run `make get-aws-url` after deploying Primary to get this value!
+    targetEndpoint: "http://REPLACE_WITH_AWS_LB_URL:9000"
+    targetAccessKey: "admin"
+    targetSecretKey: "SuperSecretPassword123!"
+
+# ------------------------------------------------------------------------------
+# PostgreSQL Configuration (Database)
+# ------------------------------------------------------------------------------
+postgres:
+  fullnameOverride: "lightbridge-db"
+  
+  primary:
+    persistence:
+      enabled: true
+      storageClass: "lightbridge-encrypted-azure"
+      size: 8Gi
+
+# ------------------------------------------------------------------------------
+# Orthanc Configuration (Medical Imaging)
+# ------------------------------------------------------------------------------
+orthanc:
+  storage:
+    endpoint: "minio"
+    bucket: "orthanc-data"
+    accessKey: "admin"
+    secretKey: "SuperSecretPassword123!"

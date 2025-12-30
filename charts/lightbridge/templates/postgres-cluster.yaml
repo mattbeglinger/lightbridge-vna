@@ -1,0 +1,26 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Release.Name }}-db
+spec:
+  instances: 3
+  
+  # 1. Storage Configuration
+  storage:
+    size: 10Gi
+    storageClass: {{ .Values.postgres.storageClass }}
+
+  # 2. Backup/Archiving Configuration (The "Bridge")
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://postgres-backups/
+      endpointURL: http://{{ .Release.Name }}-minio:9000
+      s3Credentials:
+        accessKeyId:
+          name: {{ .Release.Name }}-minio-secret
+          key: rootUser
+        secretAccessKey:
+          name: {{ .Release.Name }}-minio-secret
+          key: rootPassword
+      wal:
+        compression: gzip
