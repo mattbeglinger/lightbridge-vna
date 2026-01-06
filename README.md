@@ -1,12 +1,11 @@
 # Lightbridge VNA
 
-Lightbridge is a "Build in Public" project to replace legacy, monolithic VNAs with a modern, scalable, and cost-effective architecture. It's a cloud-native, multi-cloud Vendor Neutral Archive (VNA) built on Kubernetes. The project deploys an enterprise-grade DICOM engine (Orthanc), Object Storage abstraction (MinIO), and Zero-Footprint Viewer (OHIF) to AWS or Azure in minutes via Terraform.
+Lightbridge is a "Build in Public" project to replace legacy, monolithic VNAs with a modern, scalable, and cost-effective architecture. It's a cloud-native Neutral Archive (VNA) built on Kubernetes. The project deploys an enterprise-grade DICOM engine (Orthanc) and Object Storage abstraction (MinIO) and to AWS in minutes via Terraform.
 
 **The Stack:**
 * **Engine:** Orthanc (DICOMweb/REST)
 * **Storage:** MinIO (S3/Blob Abstraction) with KES Encryption
 * **Database:** PostgreSQL (CloudNativePG Operator)
-* **Viewer:** OHIF (React-based)
 * **Infrastructure:** Terraform & Kubernetes (EKS/AKS)
 * **Security:** Keycloak (OIDC), Cert-Manager (TLS 1.3), Linkerd (mTLS)
 
