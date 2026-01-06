@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-orthanc
+  labels:
+    app: orthanc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orthanc
+  template:
+    metadata:
+      labels:
+        app: orthanc
+    spec:
+      containers:
+        - name: orthanc
+          # Uses the Osimis image defined in values.yaml (osimis/orthanc:23.9.1)
+          image: "{{ .Values.orthanc.image }}:{{ .Values.orthanc.tag }}"
+          ports:
+            - containerPort: 8042
+              name: http
+            - containerPort: 4242
+              name: dicom
+          env:
+            # ---------------------------------------------------------
+            # 1. SSL / HTTPS SECURITY
+            # ---------------------------------------------------------
+            - name: ORTHANC__SSL_ENABLED
+              value: "true"
+            - name: ORTHANC__SSL_CERTIFICATE
+              value: "/etc/orthanc/secrets/certificate"
+            
+            # ---------------------------------------------------------
+            # 2. AWS S3 CONFIGURATION (MinIO)
+            # ---------------------------------------------------------
+            - name: ORTHANC__AWS_S3_STORAGE__ENABLE_STORAGE
+              value: "true"
+            - name: ORTHANC__AWS_S3_STORAGE__BUCKET_NAME
+              value: "orthanc-data"
+            - name: ORTHANC__AWS_S3_STORAGE__REGION
+              value: "us-east-1"
+            - name: ORTHANC__AWS_S3_STORAGE__ACCESS_KEY
+              value: "admin"
+            - name: ORTHANC__AWS_S3_STORAGE__SECRET_KEY
+              value: "SuperSecretPassword123!"
+            - name: ORTHANC__AWS_S3_STORAGE__ENDPOINT
+              value: "http://lightbridge-minio:9000"
+            - name: ORTHANC__AWS_S3_STORAGE__VIRTUAL_ADDRESSING
+              value: "false"
+
+            # ---------------------------------------------------------
+            # 3. DATABASE SETTINGS (PostgreSQL)
+            # ---------------------------------------------------------
+            - name: ORTHANC__POSTGRESQL__HOST
+              value: "lightbridge-db-rw" # Connects to the primary DB node
+            - name: ORTHANC__POSTGRESQL__PORT
+              value: "5432"
+            
+            # DYNAMIC CREDENTIALS: Read directly from the 'lightbridge-db-app' secret
+            - name: ORTHANC__POSTGRESQL__USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: lightbridge-db-app
+                  key: username
+            - name: ORTHANC__POSTGRESQL__PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: lightbridge-db-app
+                  key: password
+            
+            - name: ORTHANC__POSTGRESQL__ENABLE_INDEX
+              value: "true"
+            - name: ORTHANC__POSTGRESQL__ENABLE_STORAGE
+              value: "false" # Important: Keep storage in S3 (MinIO), not Postgres
+
+          # ---------------------------------------------------------
+          # 4. MOUNT THE SSL CERTIFICATE SECRET
+          # ---------------------------------------------------------
+          volumeMounts:
+            - name: cert-volume
+              mountPath: "/etc/orthanc/secrets"
+              readOnly: true
+
+      volumes:
+        - name: cert-volume
+          secret:
+            secretName: lightbridge-cert
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-orthanc
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 8042
+      protocol: TCP
+      name: http
+    - port: 11112
+      targetPort: 4242
+      protocol: TCP
+      name: dicom
+  selector:
+    app: orthanc

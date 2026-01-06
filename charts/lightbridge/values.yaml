@@ -1,0 +1,140 @@
+# ==============================================================================
+# LIGHTBRIDGE VNA - SINGLE CLOUD MVP VALUES
+# ==============================================================================
+
+global:
+  storageClass: "gp3" # Standard AWS Storage Class
+
+  security:
+    allowInsecureImages: true
+
+# ------------------------------------------------------------------------------
+# 1. MINIO (Object Storage)
+# ------------------------------------------------------------------------------
+minio:
+  mode: distributed
+  replicas: 4
+  podAntiAffinityPreset: "soft"
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+  persistence:
+    size: 10Gi
+    storageClass: "gp3"
+  rootUser: "admin"
+  rootPassword: "SuperSecretPassword123!"
+  buckets:
+    - name: orthanc-data
+      policy: public
+      versioning: true
+
+# ------------------------------------------------------------------------------
+# 2. POSTGRES (Database)
+# Managed by CloudNativePG Operator, so we disable the chart's default DB.
+# ------------------------------------------------------------------------------
+postgresql:
+  enabled: false
+
+# ------------------------------------------------------------------------------
+# 3. KEYCLOAK (Identity)
+# ------------------------------------------------------------------------------
+keycloak:
+  postgresql:
+    enabled: false
+
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/keycloak
+    tag: "latest"
+ 
+  auth:
+    adminUser: "admin"
+    adminPassword: "SuperSecretPassword123!"
+  
+  externalDatabase:
+    host: "lightbridge-db-rw"
+    user: "app"
+    existingSecret: "lightbridge-db-app"
+    existingSecretPasswordKey: "password"
+    database: "app"
+    vendor: "postgres"
+
+  extraEnvVars:
+    - name: KC_PROXY
+      value: "edge"
+    - name: KC_HOSTNAME_STRICT
+      value: "false"
+    - name: KC_HTTP_ENABLED
+      value: "true"
+    - name: KEYCLOAK_IMPORT
+      value: "/import/lightbridge-realm.json"
+
+  livenessProbe:
+    initialDelaySeconds: 300
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    initialDelaySeconds: 300
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  extraVolumes:
+    - name: realm-config
+      configMap:
+        name: lightbridge-realm-config
+
+  extraVolumeMounts:
+    - name: realm-config
+      mountPath: "/import"
+      readOnly: true
+
+  # This works in tandem with the EnvVar above
+  extraArgs: "-Dkeycloak.import=/import/lightbridge-realm.json"
+
+# ------------------------------------------------------------------------------
+# 4. LIGHTBRIDGE APP CONFIG (Custom Values)
+# ------------------------------------------------------------------------------
+orthanc:
+  name: "lightbridge-orthanc"
+  image: "osimis/orthanc"
+  tag: "23.9.1"
+  
+  storage:
+    bucket: "orthanc-data"
+    region: "us-east-1"
+    endpoint: "http://lightbridge-minio:9000"
+    accessKey: "admin"
+    secretKey: "SuperSecretPassword123!"
+
+  configuration:
+    AwsS3Storage: 
+      BucketName: "orthanc-data"
+      Region: "us-east-1"
+      AccessKey: "admin"
+      SecretKey: "SuperSecretPassword123!"
+      Endpoint: "http://lightbridge-minio:9000"
+      VirtualAddressing: false
+      StorageStructure: "flat"
+
+    DicomWeb:
+      Enable: true
+      Root: "/dicom-web/"
+      EnableWado: true
+      WadoRoot: "/wado/"
+      Ssl: false
+      AllowOrigins: ["*"]
+      
+    HttpServerEnabled: true
+    RemoteAccessAllowed: true
+    AuthenticationEnabled: false
+    CorsEnabled: true
+    CorsAllowOrigins: ["*"]
+
+camel:
+  image: "apache/camel-k:2.2.0"

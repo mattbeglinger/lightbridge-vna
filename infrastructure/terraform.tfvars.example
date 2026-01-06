@@ -1,0 +1,10 @@
+# infrastructure/terraform.tfvars
+
+# 1. AWS Configuration
+# Ensure you have run 'aws configure' before using this profile
+aws_profile = "default"
+aws_region  = "us-east-1"
+
+# 2. Project Settings
+# This will result in a cluster named "lightbridge-cluster"
+cluster_name_prefix = "lightbridge"

@@ -1,0 +1,110 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-ingress
+  annotations:
+    # --------------------------------------------------------------------------
+    # AWS Application Load Balancer (ALB) Configuration
+    # --------------------------------------------------------------------------
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    
+    # Force HTTPS: Redirect all HTTP (80) traffic to HTTPS (443)
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    
+    # --------------------------------------------------------------------------
+    # Cert-Manager Configuration
+    # --------------------------------------------------------------------------
+    # Automatically requests a certificate from the "selfsigned-issuer" we created
+    cert-manager.io/cluster-issuer: "selfsigned-issuer"
+
+spec:
+  tls:
+    - hosts:
+      - lightbridge.local
+      secretName: lightbridge-tls-secret
+  rules:
+    - http:
+        paths:
+          # ------------------------------------------------------
+          # 1. System: Storage Dashboard (MinIO Console)
+          # ------------------------------------------------------
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-minio-console
+                port:
+                  number: 9001
+          
+          # ------------------------------------------------------
+          # 2. System: Identity Provider (Keycloak)
+          # ------------------------------------------------------
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-keycloak
+                port:
+                  number: 80
+          
+          # ------------------------------------------------------
+          # 3. Interoperability: Legacy HL7 v2
+          # ------------------------------------------------------
+          - path: /hl7
+            pathType: Prefix
+            backend:
+              service:
+                # Routes traffic to the Camel Integration Route
+                name: {{ .Release.Name }}-integration
+                port:
+                  number: 80
+
+          # ------------------------------------------------------
+          # 4. Interoperability: Modern FHIR R4 Ingestion
+          # ------------------------------------------------------
+          - path: /fhir/r4
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-integration
+                port:
+                  number: 80
+
+          # ------------------------------------------------------
+          # 5. Interoperability: FHIR Imaging API
+          # ------------------------------------------------------
+          # Orthanc natively converts DICOM to FHIR for query/retrieve
+          - path: /fhir/imaging
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-orthanc
+                port:
+                  number: 8042
+
+          # ------------------------------------------------------
+          # 6. Viewer Data: DICOMWeb (Standard Web Protocol)
+          # ------------------------------------------------------
+          # This allows the OHIF Viewer to fetch images from Orthanc
+          - path: /dicom-web
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-orthanc
+                port:
+                  number: 8042
+
+          # ------------------------------------------------------
+          # 7. Viewer UI: OHIF (The React Application)
+          # ------------------------------------------------------
+          # Serves the actual Radiology Viewer interface
+          - path: /viewer
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-ohif
+                port:
+                  number: 80

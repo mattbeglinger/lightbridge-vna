@@ -1,0 +1,20 @@
+# Configuration for MinIO Helm Chart
+mode: distributed
+replicas: 4
+
+# Security: Enable KES (Key Encryption Service) bridge to AWS KMS
+kes:
+  enabled: true
+  external_address: "https://kes.lightbridge.local:7373"
+  keystore:
+    aws:
+      endpoint: "kms.us-east-1.amazonaws.com"
+      # This Key ID comes from our Terraform Output
+      key_id: "arn:aws:kms:us-east-1:12345:key/lightbridge-key-east"
+    # For Azure deployment, swap with:
+    # azure:
+    #   keyvault: "https://lightbridge-kv-west.vault.azure.net"
+
+# Networking: Enable Site Replication (handled via 'mc' admin command later)
+networking:
+  hostNetwork: false

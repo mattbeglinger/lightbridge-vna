@@ -1,0 +1,24 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: orthanc-db
+spec:
+  instances: 3
+  
+  # Replication Logic: Write WALs to MinIO
+  backup:
+    barmanObjectStore:
+      destinationPath: "s3://postgres-wal/"
+      endpointURL: "http://minio.lightbridge.svc:9000"
+      s3Credentials:
+        accessKeyId:
+          name: minio-secrets
+          key: accessKey
+        secretAccessKey:
+          name: minio-secrets
+          key: secretKey
+
+  # Storage Config (Encrypted Volume)
+  storage:
+    size: 50Gi
+    storageClass: "gp3-encrypted" # References the StorageClass created by Terraform

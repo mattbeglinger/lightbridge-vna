@@ -1,0 +1,9 @@
+dependencies:
+- name: minio
+  repository: https://charts.min.io/
+  version: 5.0.14
+- name: keycloak
+  repository: https://charts.bitnami.com/bitnami
+  version: 25.2.0
+digest: sha256:60d09a596814412571420dfa4c51575596c9fc8df66148985a40e00d23b05b23
+generated: "2026-01-04T12:26:13.356991-06:00"

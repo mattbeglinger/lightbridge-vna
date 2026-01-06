@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lightbridge-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # Zero Trust: TLS 1.3 Only
+    nginx.ingress.kubernetes.io/ssl-ciphers: "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256"
+spec:
+  tls:
+    - hosts:
+        - vna.lightbridge.io
+      secretName: vna-tls-cert # Managed by Cert-Manager
+  rules:
+    - host: vna.lightbridge.io
+      http:
+        paths:
+          # Route 1: Viewer
+          - path: /()(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: ohif-viewer
+                port:
+                  number: 80
+          # Route 2: API
+          - path: /orthanc(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: orthanc-engine
+                port:
+                  number: 8042
