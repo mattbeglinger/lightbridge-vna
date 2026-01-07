@@ -4,13 +4,22 @@ metadata:
   name: {{ .Release.Name }}-db
 spec:
   instances: 3
-  
-  # 1. Storage Configuration
+
+  # User Configuration
+  bootstrap:
+    initdb:
+      database: app
+      owner: app
+      postInitApplicationSQL:
+        - "ALTER SCHEMA public OWNER TO app;"
+        - "GRANT ALL ON SCHEMA public TO app;"
+
+  # Storage Configuration
   storage:
     size: 10Gi
     storageClass: {{ .Values.global.storageClass }}
 
-  # 2. Backup/Archiving Configuration (The "Bridge")
+  # Backup/Archiving Configuration (The "Bridge")
   backup:
     barmanObjectStore:
       destinationPath: s3://postgres-backups/
