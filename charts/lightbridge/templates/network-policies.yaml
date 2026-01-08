@@ -1,0 +1,112 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: lightbridge
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+# 1. ALLOW DNS (Essential System Traffic)
+# Without this, pods cannot resolve "postgres.lightbridge.svc"
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-access
+  namespace: lightbridge
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  spec:
+    egress:
+    - to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
+      - podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+      ports:
+      - protocol: UDP
+        port: 53
+      - protocol: TCP
+        port: 53
+
+---
+# 2. DATA LAYER ISOLATION (The "Blast Radius" Control)
+# Blocks ALL internet access.
+# Only accepts connections from Pods labeled "role: app"
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: secure-data-layer
+  namespace: lightbridge
+spec:
+  # Apply this to DB and MinIO
+  podSelector:
+    matchExpressions:
+      - {key: app, operator: In, values: [minio, postgres-cluster]}
+  policyTypes:
+  - Ingress
+  - Egress # Egress is blocked by default (no internet for DB!)
+  ingress:
+  - from:
+    # Only allow traffic from the App Layer
+    - podSelector:
+        matchLabels:
+          role: app # You must add this label to Orthanc/Keycloak
+    ports:
+    - protocol: TCP
+      port: 5432 # Postgres
+    - protocol: TCP
+      port: 9000 # MinIO API
+
+---
+# 3. APP LAYER ACCESS
+# Allows Ingress (from Load Balancer) and Egress (to DB/MinIO)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-traffic
+  namespace: lightbridge
+spec:
+  # Apply to Orthanc and Keycloak
+  podSelector:
+    matchLabels:
+      role: app
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    # Allow traffic from the Ingress Controller (Load Balancer)
+    # NOTE: This assumes your Ingress Controller is in the same cluster.
+    # If using AWS LB Controller in IP mode, allow 0.0.0.0/0 on port 80/8080.
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+  egress:
+  # Allow App to talk to Data Layer
+  - to:
+    - podSelector:
+        matchLabels:
+          app: minio
+    - podSelector:
+        matchLabels:
+          app: postgres-cluster
+    ports:
+    - protocol: TCP
+      port: 5432
+    - protocol: TCP
+      port: 9000
+  # Allow App to talk to the Internet (if needed for updates/OIDC)
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8      # Block internal IPs not explicitly allowed above
+        - 192.168.0.0/16
+        - 172.16.0.0/12
