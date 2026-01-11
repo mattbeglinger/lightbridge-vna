@@ -1,35 +1,42 @@
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
-  name: {{ .Release.Name }}-db
+  name: lightbridge-db
+  namespace: lightbridge
+  labels:
+    app: lightbridge-db
 spec:
   instances: 3
+  
+  # This pushes the annotations down to the Pods so Linkerd ignores DB traffic
+  inheritedMetadata:
+    annotations:
+      config.linkerd.io/skip-inbound-ports: "5432,8000,9187"
+      config.linkerd.io/skip-outbound-ports: "5432,8000,9187"
+  # =========================================
 
-  # User Configuration
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.0
+  
+  # Basic storage configuration
+  storage:
+    size: 1Gi
+    storageClass: standard # Ensure this matches your cluster's storage class (e.g., gp2, gp3, standard)
+  
+  # Automatic failover configuration
+  primaryUpdateStrategy: unsupervised
+  
+  # Bootstrap method: Create a brand new database
   bootstrap:
     initdb:
-      database: app
+      database: orthanc
       owner: app
-      postInitApplicationSQL:
-        - "ALTER SCHEMA public OWNER TO app;"
-        - "GRANT ALL ON SCHEMA public TO app;"
+      secret:
+        name: lightbridge-db-app
+  
+  # Define the superuser secret name
+  superuserSecret:
+    name: lightbridge-db-superuser
 
-  # Storage Configuration
-  storage:
-    size: 10Gi
-    storageClass: {{ .Values.global.storageClass }}
-
-  # Backup/Archiving Configuration (The "Bridge")
-  backup:
-    barmanObjectStore:
-      destinationPath: s3://postgres-backups/
-      endpointURL: http://{{ .Release.Name }}-minio:9000
-      s3Credentials:
-        accessKeyId:
-          name: {{ .Release.Name }}-minio
-          key: rootUser
-        secretAccessKey:
-          name: {{ .Release.Name }}-minio
-          key: rootPassword
-      wal:
-        compression: gzip
+  # Monitoring configuration (Optional but good for production)
+  monitoring:
+    enablePodMonitor: false # Set to true if you have Prometheus Operator installed
