@@ -1,3 +1,4 @@
+# 1. The Blanket Ban: Block EVERYTHING by default
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -9,8 +10,7 @@ spec:
   - Ingress
   - Egress
 ---
-# 1. ALLOW DNS (Essential System Traffic)
-# Without this, pods cannot resolve "postgres.lightbridge.svc"
+# 2. The "Oxygen" Rule: Allow DNS (Vital for everything)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -21,92 +21,134 @@ spec:
   policyTypes:
   - Egress
   spec:
-    egress:
-    - to:
-      - namespaceSelector:
-          matchLabels:
-            kubernetes.io/metadata.name: kube-system
-      - podSelector:
-          matchLabels:
-            k8s-app: kube-dns
-      ports:
-      - protocol: UDP
-        port: 53
-      - protocol: TCP
-        port: 53
-
----
-# 2. DATA LAYER ISOLATION (The "Blast Radius" Control)
-# Blocks ALL internet access.
-# Only accepts connections from Pods labeled "role: app"
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: secure-data-layer
-  namespace: lightbridge
-spec:
-  # Apply this to DB and MinIO
-  podSelector:
-    matchExpressions:
-      - {key: app, operator: In, values: [minio, postgres-cluster]}
-  policyTypes:
-  - Ingress
-  - Egress # Egress is blocked by default (no internet for DB!)
-  ingress:
-  - from:
-    # Only allow traffic from the App Layer
-    - podSelector:
-        matchLabels:
-          role: app # You must add this label to Orthanc/Keycloak
-    ports:
-    - protocol: TCP
-      port: 5432 # Postgres
-    - protocol: TCP
-      port: 9000 # MinIO API
-
----
-# 3. APP LAYER ACCESS
-# Allows Ingress (from Load Balancer) and Egress (to DB/MinIO)
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-app-traffic
-  namespace: lightbridge
-spec:
-  # Apply to Orthanc and Keycloak
-  podSelector:
-    matchLabels:
-      role: app
-  policyTypes:
-  - Ingress
-  - Egress
-  ingress:
-  - from:
-    # Allow traffic from the Ingress Controller (Load Balancer)
-    # NOTE: This assumes your Ingress Controller is in the same cluster.
-    # If using AWS LB Controller in IP mode, allow 0.0.0.0/0 on port 80/8080.
+  egress:
+  - to:
     - namespaceSelector:
         matchLabels:
-          kubernetes.io/metadata.name: ingress-nginx
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+---
+# 3. The "Cloud & Mesh" Rule: Allow Node Metadata & Linkerd Communication
+# CRITICAL: This prevents the AWS/Linkerd "Deadlock"
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-system-traffic
+  namespace: lightbridge
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
   egress:
-  # Allow App to talk to Data Layer
+  # Allow talk to AWS Metadata / Kubelet (Link-Local)
   - to:
+    - ipBlock:
+        cidr: 169.254.0.0/16
+  # Allow Linkerd sidecars to talk to themselves (localhost)
+  - to:
+    - ipBlock:
+        cidr: 127.0.0.1/32
+  - to:
+    - ipBlock:
+        cidr: 0:0:0:0:0:0:0:1/128
+---
+# 4. Protect the Database (Allow only from Apps)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: protect-database
+  namespace: lightbridge
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: lightbridge-db
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow Postgres Traffic (5432) from Orthanc and Keycloak
+  - from:
     - podSelector:
         matchLabels:
-          app: minio
+          app: orthanc
     - podSelector:
         matchLabels:
-          app: postgres-cluster
+          app.kubernetes.io/name: keycloak
     ports:
     - protocol: TCP
       port: 5432
+  # Allow Metrics/Status checks (8000/9187) within the namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: lightbridge
+    ports:
+    - protocol: TCP
+      port: 8000
+    - protocol: TCP
+      port: 9187
+---
+# 5. Allow Access to Orthanc (From outside + Database response)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-orthanc
+  namespace: lightbridge
+spec:
+  podSelector:
+    matchLabels:
+      app: orthanc
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow HTTPS/DICOM from anywhere (Ingress Controller)
+  - from:
+    - namespaceSelector: {} # Allows Ingress Controller from other namespaces
+    ports:
+    - protocol: TCP
+      port: 8042
+    - protocol: TCP
+      port: 4242
+---
+# 6. Allow Access to MinIO (Storage)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: protect-minio
+  namespace: lightbridge
+spec:
+  podSelector:
+    matchLabels:
+      app: minio
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: orthanc
+    ports:
     - protocol: TCP
       port: 9000
-  # Allow App to talk to the Internet (if needed for updates/OIDC)
-  - to:
-    - ipBlock:
-        cidr: 0.0.0.0/0
-        except:
-        - 10.0.0.0/8      # Block internal IPs not explicitly allowed above
-        - 192.168.0.0/16
-        - 172.16.0.0/12
+---
+# 7. Allow Access to Keycloak (Auth)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-keycloak
+  namespace: lightbridge
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8080
