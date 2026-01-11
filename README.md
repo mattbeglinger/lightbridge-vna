@@ -63,7 +63,6 @@ This project orchestrates several third-party open-source applications. While th
 | :--- | :--- | :--- |
 | **Orthanc** | GPLv3 | Strong copyleft (General Public License) |
 | **MinIO** | AGPLv3 | Network-protective copyleft (Affero General Public License) |
-| **OHIF Viewer** | MIT | Permissive License |
 | **PostgreSQL** | PostgreSQL | Permissive License |
 
 > **⚠️ Note for Commercial Users:** If you plan to offer this stack as a commercial SaaS product, please review the **AGPLv3** implications regarding MinIO and the **GPLv3** implications regarding Orthanc. Lightbridge interacts with these services via standard APIs (HTTP/REST/DICOM), which generally maintains separation, but you are responsible for ensuring your deployment complies with their respective terms.
