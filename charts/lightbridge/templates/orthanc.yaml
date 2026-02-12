@@ -16,13 +16,40 @@ spec:
     spec:
       containers:
         - name: orthanc
-          # Uses the Osimis image defined in values.yaml (osimis/orthanc:23.9.1)
           image: "{{ .Values.orthanc.image }}:{{ .Values.orthanc.tag }}"
           ports:
             - containerPort: 8042
               name: http
             - containerPort: 4242
               name: dicom
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          startupProbe:
+            httpGet:
+              path: /system
+              port: 8042
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /system
+              port: 8042
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /system
+              port: 8042
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           env:
             # ---------------------------------------------------------
             # 1. SSL / HTTPS SECURITY
@@ -31,9 +58,10 @@ spec:
               value: "true"
             - name: ORTHANC__SSL_CERTIFICATE
               value: "/etc/orthanc/secrets/certificate"
-            
+
             # ---------------------------------------------------------
             # 2. AWS S3 CONFIGURATION (MinIO)
+            # Credentials sourced from Kubernetes Secret
             # ---------------------------------------------------------
             - name: ORTHANC__AWS_S3_STORAGE__ENABLE_STORAGE
               value: "true"
@@ -42,9 +70,15 @@ spec:
             - name: ORTHANC__AWS_S3_STORAGE__REGION
               value: "us-east-1"
             - name: ORTHANC__AWS_S3_STORAGE__ACCESS_KEY
-              value: "admin"
+              valueFrom:
+                secretKeyRef:
+                  name: lightbridge-s3-creds
+                  key: access-key
             - name: ORTHANC__AWS_S3_STORAGE__SECRET_KEY
-              value: "SuperSecretPassword123!"
+              valueFrom:
+                secretKeyRef:
+                  name: lightbridge-s3-creds
+                  key: secret-key
             - name: ORTHANC__AWS_S3_STORAGE__ENDPOINT
               value: "http://lightbridge-minio:9000"
             - name: ORTHANC__AWS_S3_STORAGE__VIRTUAL_ADDRESSING
@@ -52,13 +86,12 @@ spec:
 
             # ---------------------------------------------------------
             # 3. DATABASE SETTINGS (PostgreSQL)
+            # Credentials sourced from CloudNativePG-managed Secret
             # ---------------------------------------------------------
             - name: ORTHANC__POSTGRESQL__HOST
-              value: "lightbridge-db-rw" # Connects to the primary DB node
+              value: "lightbridge-db-rw"
             - name: ORTHANC__POSTGRESQL__PORT
               value: "5432"
-            
-            # DYNAMIC CREDENTIALS: Read directly from the 'lightbridge-db-app' secret
             - name: ORTHANC__POSTGRESQL__USERNAME
               valueFrom:
                 secretKeyRef:
@@ -69,11 +102,10 @@ spec:
                 secretKeyRef:
                   name: lightbridge-db-app
                   key: password
-            
             - name: ORTHANC__POSTGRESQL__ENABLE_INDEX
               value: "true"
             - name: ORTHANC__POSTGRESQL__ENABLE_STORAGE
-              value: "false" # Important: Keep storage in S3 (MinIO), not Postgres
+              value: "false"
 
           # ---------------------------------------------------------
           # 4. MOUNT THE SSL CERTIFICATE SECRET
@@ -93,9 +125,9 @@ kind: Service
 metadata:
   name: {{ .Release.Name }}-orthanc
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   ports:
-    - port: 80
+    - port: 8042
       targetPort: 8042
       protocol: TCP
       name: http

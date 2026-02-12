@@ -1,12 +1,29 @@
 # ==============================================================================
 # LIGHTBRIDGE VNA - SINGLE CLOUD MVP VALUES
 # ==============================================================================
+#
+# PREREQUISITE: Create the required secrets before deploying:
+#
+#   kubectl create namespace lightbridge
+#
+#   kubectl create secret generic lightbridge-minio-creds \
+#     --from-literal=rootUser=admin \
+#     --from-literal=rootPassword=<STRONG_PASSWORD> \
+#     -n lightbridge
+#
+#   kubectl create secret generic lightbridge-keycloak-admin \
+#     --from-literal=admin-password=<STRONG_PASSWORD> \
+#     -n lightbridge
+#
+#   kubectl create secret generic lightbridge-s3-creds \
+#     --from-literal=access-key=admin \
+#     --from-literal=secret-key=<STRONG_PASSWORD> \
+#     -n lightbridge
+#
+# ==============================================================================
 
 global:
-  storageClass: "gp3" # Standard AWS Storage Class
-
-  security:
-    allowInsecureImages: true
+  storageClass: "gp3"
 
 # ------------------------------------------------------------------------------
 # 1. MINIO (Object Storage)
@@ -25,11 +42,10 @@ minio:
   persistence:
     size: 10Gi
     storageClass: "gp3"
-  rootUser: "admin"
-  rootPassword: "SuperSecretPassword123!"
+  existingSecret: "lightbridge-minio-creds"
   buckets:
     - name: orthanc-data
-      policy: public
+      policy: none
       versioning: true
 
 # ------------------------------------------------------------------------------
@@ -49,12 +65,12 @@ keycloak:
   image:
     registry: public.ecr.aws
     repository: bitnami/keycloak
-    tag: "latest"
- 
+    tag: "24.0.5"
+
   auth:
     adminUser: "admin"
-    adminPassword: "SuperSecretPassword123!"
-  
+    existingSecret: "lightbridge-keycloak-admin"
+
   externalDatabase:
     host: "lightbridge-db-rw"
     user: "app"
@@ -94,7 +110,6 @@ keycloak:
       mountPath: "/import"
       readOnly: true
 
-  # This works in tandem with the EnvVar above
   extraArgs: "-Dkeycloak.import=/import/lightbridge-realm.json"
 
 # ------------------------------------------------------------------------------
@@ -104,20 +119,17 @@ orthanc:
   name: "lightbridge-orthanc"
   image: "osimis/orthanc"
   tag: "23.9.1"
-  
+
   storage:
     bucket: "orthanc-data"
     region: "us-east-1"
     endpoint: "http://lightbridge-minio:9000"
-    accessKey: "admin"
-    secretKey: "SuperSecretPassword123!"
+    # Credentials are read from the lightbridge-s3-creds secret (see orthanc.yaml)
 
   configuration:
-    AwsS3Storage: 
+    AwsS3Storage:
       BucketName: "orthanc-data"
       Region: "us-east-1"
-      AccessKey: "admin"
-      SecretKey: "SuperSecretPassword123!"
       Endpoint: "http://lightbridge-minio:9000"
       VirtualAddressing: false
       StorageStructure: "flat"
@@ -128,13 +140,10 @@ orthanc:
       EnableWado: true
       WadoRoot: "/wado/"
       Ssl: false
-      AllowOrigins: ["*"]
-      
+
     HttpServerEnabled: true
     RemoteAccessAllowed: true
-    AuthenticationEnabled: false
-    CorsEnabled: true
-    CorsAllowOrigins: ["*"]
+    AuthenticationEnabled: true
 
 camel:
   image: "apache/camel-k:2.2.0"

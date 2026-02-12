@@ -17,10 +17,9 @@ spec:
 
   imageName: ghcr.io/cloudnative-pg/postgresql:16.0
   
-  # Basic storage configuration
   storage:
-    size: 1Gi
-    storageClass: standard # Ensure this matches your cluster's storage class (e.g., gp2, gp3, standard)
+    size: 50Gi
+    storageClass: gp3
   
   # Automatic failover configuration
   primaryUpdateStrategy: unsupervised

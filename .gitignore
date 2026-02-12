@@ -12,12 +12,15 @@
 # Terraform Vars (Contains your actual AWS/Azure secrets)
 *.tfvars
 terraform.tfvars
+!terraform.tfvars.example
 
 # Crash logs
 crash.log
 override.tf
 override.tf.json
-.terraform.lock.hcl
+
+# NOTE: .terraform.lock.hcl is intentionally NOT ignored.
+# It should be committed to ensure consistent provider versions.
 
 # =========================
 # Helm / Kubernetes (Software)
@@ -29,7 +32,9 @@ values-secondary.yaml
 # Ignore downloaded dependency charts (the .tgz files)
 charts/**/charts/
 *.tgz
-*.lock
+
+# NOTE: Chart.lock is intentionally NOT ignored.
+# It pins exact dependency versions for reproducible builds.
 
 # =========================
 # OS & IDE System Files

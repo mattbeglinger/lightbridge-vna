@@ -20,7 +20,6 @@ spec:
   podSelector: {}
   policyTypes:
   - Egress
-  spec:
   egress:
   - to:
     - namespaceSelector:
